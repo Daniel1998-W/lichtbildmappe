@@ -1,0 +1,458 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Lichtbildmappe">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="theme-color" content="#0e6e74">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="manifest" href="manifest.json">
+<title>Lichtbildmappe</title>
+<style>
+:root{
+  --bg:#f3f5f5; --surface:#ffffff; --fg:#14201f; --muted:#5b6b6a; --line:#d7dfde;
+  --accent:#0e6e74; --accent-fg:#ffffff; --danger:#b3261e;
+  --font:-apple-system,BlinkMacSystemFont,"SF Pro Text",system-ui,sans-serif;
+  --mono:ui-monospace,"SF Mono",Menlo,monospace;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){:root{
+  --bg:#0f1515; --surface:#182120; --fg:#e6eeed; --muted:#93a4a2; --line:#2a3735;
+  --accent:#3fb4ba; --accent-fg:#06201f; --danger:#f2867e; color-scheme:dark}}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--fg);-webkit-text-size-adjust:100%}
+body{font-family:var(--font);font-size:16px;line-height:1.45;
+  padding-top:calc(12px + env(safe-area-inset-top,0px));
+  padding-bottom:calc(24px + env(safe-area-inset-bottom,0px));
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+body.camopen{overflow:hidden}
+[hidden]{display:none!important}
+.wrap{max-width:560px;margin:0 auto;display:flex;flex-direction:column;gap:10px}
+h1{font-size:1.3rem;font-weight:600;margin:0;letter-spacing:-.01em}
+.lbl{display:flex;justify-content:space-between;align-items:baseline;font-size:.72rem;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:3px}
+.lbl button{font:inherit;text-transform:none;letter-spacing:0;font-size:.8rem;border:0;background:none;color:var(--accent);cursor:pointer;padding:0}
+.lbl button:disabled{opacity:.35}
+input[type=text],select{width:100%;font:inherit;padding:9px 12px;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--fg)}
+select{appearance:none;-webkit-appearance:none;
+  background-image:linear-gradient(45deg,transparent 50%,var(--muted) 50%),linear-gradient(135deg,var(--muted) 50%,transparent 50%);
+  background-position:calc(100% - 20px) 50%,calc(100% - 14px) 50%;background-size:6px 6px;background-repeat:no-repeat}
+input.small{padding:7px 10px;font-size:.95rem}
+input:focus-visible,select:focus-visible,button:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.add{display:flex;gap:8px;margin-top:6px}
+.add input{flex:1;min-width:0}
+.add button{font:inherit;font-size:.95rem;font-weight:500;padding:0 14px;border:1px solid var(--accent);border-radius:10px;background:transparent;color:var(--accent)}
+.picks{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.btn{position:relative;display:flex;align-items:center;justify-content:center;gap:8px;font:inherit;font-weight:600;padding:12px 10px;border-radius:10px;border:1px solid var(--line);background:var(--surface);color:var(--fg);cursor:pointer;text-align:center;width:100%}
+.btn.primary{background:var(--accent);color:var(--accent-fg);border-color:var(--accent)}
+.btn input{position:absolute;inset:0;opacity:0;width:100%}
+.btn[disabled]{opacity:.45}
+
+.page{background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:10px 12px 8px;display:flex;flex-direction:column;gap:8px}
+.ph,.pf{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;font-size:.78rem}
+.ph{border-bottom:1.5px solid var(--fg);padding-bottom:6px}
+.ph .hd{display:flex;flex-direction:column;min-width:0}
+.ph b{font-size:.92rem;overflow-wrap:anywhere}
+.ph small{font-size:.78rem;color:var(--muted)}
+.ph>span,.pf span{font-family:var(--mono);color:var(--muted)}
+.pf{border-top:1px solid var(--line);padding-top:6px;font-size:.72rem}
+.list{display:flex;flex-direction:column;gap:8px}
+.row{display:grid;grid-template-columns:72px 1fr;gap:10px;align-items:start}
+.thumb{width:72px;aspect-ratio:3/4;border-radius:6px;overflow:hidden;background:var(--line)}
+.thumb img{width:100%;height:100%;object-fit:cover;display:block}
+.meta{display:flex;flex-direction:column;gap:4px;min-width:0}
+.nr{font-family:var(--mono);font-size:.8rem;font-weight:500}
+.nr .tk{font-weight:400;color:var(--muted)}
+.ctl{display:flex;gap:6px}
+.ctl button{min-width:40px;height:30px;font:inherit;font-size:.85rem;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--fg);padding:0 10px}
+.ctl button.del{color:var(--danger);margin-left:auto}
+.ctl button:disabled{opacity:.35}
+.empty{border:1.5px dashed var(--line);border-radius:8px;padding:16px 12px;text-align:center;color:var(--muted)}
+.status{min-height:1.4em;font-size:.9rem;color:var(--muted);text-align:center;margin:0}
+.status.err{color:var(--danger)}
+
+.archive{display:flex;flex-direction:column;gap:8px;border-top:1px solid var(--line);padding-top:12px;margin-top:6px}
+.ahead{display:flex;justify-content:space-between;align-items:baseline}
+.ahead h2{font-size:1.1rem;font-weight:600;margin:0}
+.ahead span{font-family:var(--mono);font-size:.8rem;color:var(--muted)}
+.anote{margin:0;color:var(--muted);font-size:.92rem}
+.alist{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;background:var(--surface);border:1px solid var(--line);border-radius:10px}
+.alist:empty{display:none}
+.arow{display:flex;flex-direction:column;gap:6px;padding:10px 12px;border-top:1px solid var(--line)}
+.arow:first-child{border-top:0}
+.ainfo{display:flex;flex-direction:column;gap:2px;min-width:0}
+.ainfo b{font-weight:600;font-size:.95rem;overflow-wrap:anywhere}
+.ainfo small{color:var(--muted);font-size:.82rem}
+.ainfo .ameta{font-family:var(--mono);font-size:.74rem;font-variant-numeric:tabular-nums}
+.actl{display:flex;gap:8px}
+.actl button{font:inherit;font-size:.9rem;height:36px;padding:0 14px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--fg)}
+.actl .open{border-color:var(--accent);color:var(--accent);font-weight:500}
+.actl .del{margin-left:auto;color:var(--danger)}
+.actl .del.armed{background:var(--danger);color:var(--surface);border-color:var(--danger)}
+.offline{font-family:var(--mono);font-size:.72rem;color:var(--muted);text-align:center;margin:4px 0 0}
+
+/* Live-Kamera */
+.cam{position:fixed;inset:0;z-index:50;background:#000;display:flex;flex-direction:column}
+.cam video{flex:1;width:100%;min-height:0;object-fit:contain;background:#000}
+.camTop{position:absolute;top:0;left:0;right:0;padding:calc(10px + env(safe-area-inset-top,0px)) 16px 10px;text-align:center;color:#fff;font-weight:600;font-size:.95rem;text-shadow:0 1px 3px rgba(0,0,0,.6)}
+.camBar{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;padding:16px max(20px,env(safe-area-inset-left,0px)) calc(20px + env(safe-area-inset-bottom,0px));background:#000}
+.camBar .done{justify-self:start;font:inherit;font-weight:600;color:#fff;background:rgba(255,255,255,.16);border:0;border-radius:10px;padding:10px 16px}
+.shutter{width:74px;height:74px;border-radius:50%;border:4px solid #fff;background:#fff;box-shadow:inset 0 0 0 3px #000;padding:0}
+.shutter:active{transform:scale(.93)}
+.camLast{justify-self:end;width:52px;height:52px;border-radius:8px;overflow:hidden;border:2px solid #fff;background:#222}
+.camLast img{width:100%;height:100%;object-fit:cover;display:block}
+.flash{position:absolute;inset:0;background:#fff;opacity:0;pointer-events:none;transition:opacity .25s}
+.flash.on{opacity:.75;transition:none}
+@media (prefers-reduced-motion:reduce){.flash{transition:none}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Lichtbildmappe</h1>
+
+  <div>
+    <div class="lbl"><label for="head">Kopfzeile</label><button type="button" id="headReset">Standard</button></div>
+    <input type="text" id="head" autocomplete="off">
+  </div>
+  <div>
+    <div class="lbl"><label for="part">Anlagenteil (zweite Zeile im Kopf)</label><button type="button" id="partDel">Eintrag entfernen</button></div>
+    <select id="part"></select>
+    <div class="add">
+      <input type="text" id="partNew" class="small" placeholder="Neuen Eintrag hinzufügen" autocomplete="off" enterkeyhint="done">
+      <button type="button" id="partAdd">Hinzufügen</button>
+    </div>
+  </div>
+  <div>
+    <div class="lbl"><label for="foot">Fußzeile</label><button type="button" id="footReset">Standard</button></div>
+    <input type="text" id="foot" autocomplete="off" placeholder="z. B. Firma, Objekt, Auftragsnummer">
+  </div>
+
+  <div class="picks">
+    <button type="button" class="btn primary" id="camBtn">📷 Kamera</button>
+    <label class="btn" for="lib">🖼 Fotos wählen
+      <input id="lib" type="file" accept="image/*" multiple></label>
+  </div>
+  <input id="camFallback" type="file" accept="image/*" capture="environment" hidden>
+
+  <section class="page" aria-label="Seitenvorschau">
+    <div class="ph"><div class="hd"><b id="pHead"></b><small id="pPart" hidden></small></div><span id="pDate"></span></div>
+    <div id="list" class="list" hidden></div>
+    <div id="empty" class="empty">Noch keine Fotos. Tippe auf <b>Kamera</b> und löse beliebig oft aus, oder hole Fotos mit <b>Fotos wählen</b>.</div>
+    <div class="pf"><span id="pFoot"></span><span id="pPage"></span></div>
+  </section>
+
+  <button class="btn primary" id="make" disabled>PDF erstellen</button>
+  <p id="status" class="status" role="status"></p>
+
+  <section class="archive" aria-labelledby="archH">
+    <div class="ahead"><h2 id="archH">Archiv</h2><span id="archCount"></span></div>
+    <p id="archNote" class="anote">Archiv wird geladen …</p>
+    <ul id="arch" class="alist"></ul>
+    <p id="offline" class="offline"></p>
+  </section>
+</div>
+
+<div id="cam" class="cam" hidden>
+  <video id="vid" playsinline muted autoplay></video>
+  <div class="flash" id="flash"></div>
+  <div class="camTop" id="camCount">0 Fotos</div>
+  <div class="camBar">
+    <button type="button" class="done" id="camDone">Fertig</button>
+    <button type="button" class="shutter" id="shutter" aria-label="Auslösen"></button>
+    <div class="camLast"><img id="camLast" alt="" hidden></div>
+  </div>
+</div>
+
+<script>
+'use strict';
+const $=id=>document.getElementById(id);
+const DEF_HEAD='Lichtbildmappe zu Wartung Klimaanlage', DEF_FOOT='Lichtbildmappe';
+const DEF_PARTS=['Außengerät','Umluftkühlgerät','Inneneinheit (Wandgerät)','Lüftungsgerät (RLT-Anlage)','Kaltwassersatz'];
+const photos=[]; // {jpeg:Uint8Array, thumb:objectURL, w, h, text, taken}
+let perPage=1;
+const pad=n=>String(n).padStart(2,'0');
+const today=new Date();
+const dateStr=pad(today.getDate())+'.'+pad(today.getMonth()+1)+'.'+today.getFullYear();
+const fileDate=today.getFullYear()+'-'+pad(today.getMonth()+1)+'-'+pad(today.getDate());
+const fmtTaken=d=>pad(d.getDate())+'.'+pad(d.getMonth()+1)+'.'+d.getFullYear()+' '+pad(d.getHours())+':'+pad(d.getMinutes())+' Uhr';
+
+function load(k,d){try{const v=localStorage.getItem(k);return v===null?d:v}catch(e){return d}}
+function save(k,v){try{localStorage.setItem(k,v)}catch(e){}}
+function status(m,err){const s=$('status');s.textContent=m||'';s.className='status'+(err?' err':'');}
+
+/* ---------- Kopf, Anlagenteil, Fuß ---------- */
+$('head').value=load('lbm-head',DEF_HEAD);
+$('foot').value=load('lbm-foot',DEF_FOOT);
+$('head').addEventListener('input',()=>{save('lbm-head',$('head').value);renderFrame();});
+$('foot').addEventListener('input',()=>{save('lbm-foot',$('foot').value);renderFrame();});
+$('headReset').onclick=()=>{$('head').value=DEF_HEAD;save('lbm-head',DEF_HEAD);renderFrame();};
+$('footReset').onclick=()=>{$('foot').value=DEF_FOOT;save('lbm-foot',DEF_FOOT);renderFrame();};
+
+let parts;try{parts=JSON.parse(load('lbm-parts','null'))}catch(e){parts=null}
+if(!Array.isArray(parts))parts=DEF_PARTS.slice();
+function fillParts(sel){const s=$('part');s.innerHTML='';
+  const o0=document.createElement('option');o0.value='';o0.textContent='– kein Anlagenteil –';s.appendChild(o0);
+  parts.forEach(p=>{const o=document.createElement('option');o.value=p;o.textContent=p;s.appendChild(o);});
+  s.value=parts.includes(sel)?sel:'';$('partDel').disabled=!s.value;}
+fillParts(load('lbm-part',''));
+$('part').addEventListener('change',()=>{save('lbm-part',$('part').value);$('partDel').disabled=!$('part').value;renderFrame();});
+function addPart(){const v=$('partNew').value.trim();if(!v)return;
+  if(!parts.includes(v)){parts.push(v);save('lbm-parts',JSON.stringify(parts));}
+  $('partNew').value='';fillParts(v);save('lbm-part',v);renderFrame();status('„'+v+'“ hinzugefügt und ausgewählt');}
+$('partAdd').onclick=addPart;
+$('partNew').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();addPart();}});
+$('partDel').onclick=()=>{const v=$('part').value;if(!v)return;
+  parts=parts.filter(p=>p!==v);save('lbm-parts',JSON.stringify(parts));save('lbm-part','');fillParts('');renderFrame();status('„'+v+'“ aus der Liste entfernt');};
+
+const headText=()=>$('head').value.trim()||DEF_HEAD;
+const footText=()=>$('foot').value.trim();
+const partText=()=>$('part').value;
+function autoPer(){perPage=photos.length<=1?1:photos.length===2?2:4;}
+const pageCount=()=>{autoPer();return Math.max(1,Math.ceil(photos.length/perPage));};
+
+/* ---------- Aufnahmedatum aus EXIF (JPEG) ---------- */
+async function exifDate(file){
+  try{const buf=new DataView(await file.slice(0,262144).arrayBuffer());
+    if(buf.getUint16(0)!==0xFFD8)return null;
+    let o=2;
+    while(o+4<buf.byteLength){const m=buf.getUint16(o);const len=buf.getUint16(o+2);
+      if(m===0xFFE1&&buf.getUint32(o+4)===0x45786966){return readTiff(buf,o+10);}
+      if((m&0xFF00)!==0xFF00||m===0xFFDA)break;o+=2+len;}
+  }catch(e){}
+  return null;}
+function readTiff(v,t){
+  const le=v.getUint16(t)===0x4949;const u16=p=>v.getUint16(p,le),u32=p=>v.getUint32(p,le);
+  const str=(p,n)=>{let s='';for(let i=0;i<n;i++){const c=v.getUint8(p+i);if(!c)break;s+=String.fromCharCode(c);}return s;};
+  function tags(ifd){const out={};const n=u16(t+ifd);
+    for(let i=0;i<n;i++){const e=t+ifd+2+i*12;const tag=u16(e),cnt=u32(e+4);
+      out[tag]={cnt,val:u32(e+8),pos:cnt>4?t+u32(e+8):e+8};}return out;}
+  const ifd0=tags(u32(t+4));let dt=null;
+  if(ifd0[0x8769]){const ex=tags(ifd0[0x8769].val);const d=ex[0x9003]||ex[0x9004];if(d)dt=str(d.pos,d.cnt);}
+  if(!dt&&ifd0[0x0132])dt=str(ifd0[0x0132].pos,ifd0[0x0132].cnt);
+  const m=dt&&dt.match(/^(\d{4}):(\d{2}):(\d{2}) (\d{2}):(\d{2})/);
+  return m?new Date(+m[1],m[2]-1,+m[3],+m[4],+m[5]):null;}
+
+/* ---------- Bilder verarbeiten (max. 2000 px, JPEG) ---------- */
+function canvasToPhoto(src,sw,sh,taken){return new Promise((res,rej)=>{
+  const s=Math.min(1,2000/Math.max(sw,sh));const w=Math.round(sw*s),h=Math.round(sh*s);
+  const c=document.createElement('canvas');c.width=w;c.height=h;c.getContext('2d').drawImage(src,0,0,w,h);
+  c.toBlob(async b=>{if(!b)return rej(new Error('Bild konnte nicht verarbeitet werden.'));
+    res({jpeg:new Uint8Array(await b.arrayBuffer()),thumb:URL.createObjectURL(b),w,h,text:'',taken:fmtTaken(taken)});},'image/jpeg',0.85);});}
+function fileToPhoto(file,taken){return new Promise((res,rej)=>{const u=URL.createObjectURL(file);const img=new Image();
+  img.onload=()=>{canvasToPhoto(img,img.naturalWidth,img.naturalHeight,taken).then(res,rej).finally(()=>URL.revokeObjectURL(u));};
+  img.onerror=()=>{URL.revokeObjectURL(u);rej(new Error('Ein Bild konnte nicht gelesen werden.'));};img.src=u;});}
+
+async function addFiles(list,fromCamera){const files=[...list];if(!files.length)return;status('Fotos werden übernommen …');
+  for(const f of files){try{const d=(await exifDate(f))||(fromCamera?new Date():new Date(f.lastModified||Date.now()));
+    photos.push(await fileToPhoto(f,d));}catch(e){status(e.message,true);return;}}
+  status(photos.length+(photos.length===1?' Foto':' Fotos')+' in der Mappe');renderList();}
+$('lib').addEventListener('change',e=>{addFiles(e.target.files,false);e.target.value='';});
+$('camFallback').addEventListener('change',e=>{addFiles(e.target.files,true);e.target.value='';});
+
+/* ---------- Live-Kamera: auslösen ohne Rückfrage ---------- */
+let stream=null,shots=0;
+$('camBtn').onclick=async()=>{
+  if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){$('camFallback').click();return;}
+  try{stream=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:{ideal:'environment'},width:{ideal:4032},height:{ideal:3024}}});}
+  catch(e){status('Kein Zugriff auf die Kamera. Erlaube ihn unter Einstellungen › Safari › Kamera oder nutze „Fotos wählen“.',true);return;}
+  shots=0;$('camCount').textContent='0 Fotos';$('camLast').hidden=true;
+  $('vid').srcObject=stream;$('cam').hidden=false;document.body.classList.add('camopen');
+  try{await $('vid').play();}catch(e){}};
+$('shutter').onclick=async()=>{const v=$('vid');if(!v.videoWidth)return;
+  const f=$('flash');f.classList.add('on');requestAnimationFrame(()=>requestAnimationFrame(()=>f.classList.remove('on')));
+  shots++;$('camCount').textContent=shots+(shots===1?' Foto':' Fotos');
+  try{const p=await canvasToPhoto(v,v.videoWidth,v.videoHeight,new Date());photos.push(p);
+    $('camLast').src=p.thumb;$('camLast').hidden=false;renderList();}
+  catch(e){status(e.message,true);}};
+function closeCam(){if(stream){stream.getTracks().forEach(t=>t.stop());stream=null;}
+  $('vid').srcObject=null;$('cam').hidden=true;document.body.classList.remove('camopen');
+  if(shots)status(photos.length+(photos.length===1?' Foto':' Fotos')+' in der Mappe');}
+$('camDone').onclick=closeCam;
+document.addEventListener('visibilitychange',()=>{if(document.hidden&&stream)closeCam();});
+
+/* ---------- Ansicht ---------- */
+function renderFrame(){
+  $('pHead').textContent=headText();$('pDate').textContent=dateStr;
+  const pt=partText();$('pPart').hidden=!pt;$('pPart').textContent=pt?'Anlagenteil: '+pt:'';
+  const f=footText();$('pFoot').textContent=f?f+' · '+dateStr:dateStr;
+  const n=pageCount();$('pPage').textContent='Seite 1 von '+n;
+  $('make').textContent=photos.length?'PDF erstellen ('+n+(n===1?' Seite)':' Seiten)'):'PDF erstellen';
+  $('make').disabled=!photos.length;}
+
+function renderList(){const L=$('list');L.innerHTML='';
+  photos.forEach((p,i)=>{const r=document.createElement('div');r.className='row';
+    r.innerHTML='<div class="thumb"><img alt=""></div><div class="meta"><span class="nr"></span>'+
+      '<input type="text" class="small" placeholder="Beschreibung (optional)" autocomplete="off">'+
+      '<div class="ctl"><button type="button" aria-label="Nach oben">↑</button><button type="button" aria-label="Nach unten">↓</button><button type="button" class="del">Löschen</button></div></div>';
+    const img=r.querySelector('img');img.src=p.thumb;img.alt='Foto '+(i+1);
+    const nr=r.querySelector('.nr');nr.textContent='Lfd. Nr. '+(i+1)+' ';const tk=document.createElement('span');tk.className='tk';tk.textContent='· '+p.taken;nr.appendChild(tk);
+    const inp=r.querySelector('input');inp.id='cap'+i;inp.value=p.text;inp.oninput=()=>{p.text=inp.value;};
+    const b=r.querySelectorAll('.ctl button');b[0].disabled=i===0;b[1].disabled=i===photos.length-1;
+    b[0].onclick=()=>{[photos[i-1],photos[i]]=[photos[i],photos[i-1]];renderList();};
+    b[1].onclick=()=>{[photos[i+1],photos[i]]=[photos[i],photos[i+1]];renderList();};
+    b[2].onclick=()=>{URL.revokeObjectURL(p.thumb);photos.splice(i,1);renderList();status('');};
+    L.appendChild(r);});
+  L.hidden=!photos.length;$('empty').hidden=!!photos.length;renderFrame();}
+
+/* ---------- Eigener PDF-Erzeuger (A4, Helvetica, JPEG) ---------- */
+const WIDTHS={"Helvetica":[278,278,355,556,556,889,667,191,333,333,389,584,278,333,278,278,556,556,556,556,556,556,556,556,556,556,278,278,584,584,584,556,1015,667,667,722,722,667,611,778,722,278,500,667,556,833,722,778,667,778,722,667,611,722,667,944,667,667,611,278,278,278,469,556,333,556,556,500,556,556,278,556,556,222,222,500,222,833,556,556,556,556,333,500,278,556,500,722,500,500,500,334,260,334,584,761,556,761,222,556,333,1000,556,556,333,1000,667,333,1000,761,611,761,761,222,222,333,333,350,556,1000,333,1000,500,333,944,761,500,667,278,333,556,556,556,556,260,556,333,737,370,556,584,333,737,333,400,584,333,333,333,556,537,278,333,333,365,556,834,834,834,611,667,667,667,667,667,667,1000,722,667,667,667,667,278,278,278,278,722,722,778,778,778,778,778,584,778,722,722,722,722,667,667,611,556,556,556,556,556,556,889,500,556,556,556,556,278,278,278,278,556,556,556,556,556,556,556,584,611,556,556,556,556,500,556,500],"Helvetica-Bold":[278,333,474,556,556,889,722,238,333,333,389,584,278,333,278,278,556,556,556,556,556,556,556,556,556,556,333,333,584,584,584,611,975,722,722,722,722,667,611,778,722,278,556,722,611,833,722,778,667,778,722,667,611,722,667,944,667,667,611,333,278,333,584,556,333,556,611,556,611,556,333,611,611,278,278,556,278,889,611,611,611,611,389,556,333,611,556,778,556,556,500,389,280,389,584,761,556,761,278,556,500,1000,556,556,333,1000,667,333,1000,761,611,761,761,278,278,500,500,350,556,1000,333,1000,556,333,944,761,500,667,278,333,556,556,556,556,280,556,333,737,370,556,584,333,737,333,400,584,333,333,333,611,556,278,333,333,365,556,834,834,834,611,722,722,722,722,722,722,1000,722,667,667,667,667,278,278,278,278,722,722,778,778,778,778,778,584,778,722,722,722,722,667,667,611,556,556,556,556,556,556,889,556,556,556,556,556,278,278,278,278,611,611,611,611,611,611,611,584,611,611,611,611,611,556,611,556]};
+const CP1252={0x20AC:128,0x201A:130,0x0192:131,0x201E:132,0x2026:133,0x2020:134,0x2021:135,0x02C6:136,0x2030:137,0x0160:138,0x2039:139,0x0152:140,0x017D:142,0x2018:145,0x2019:146,0x201C:147,0x201D:148,0x2022:149,0x2013:150,0x2014:151,0x02DC:152,0x2122:153,0x0161:154,0x203A:155,0x0153:156,0x017E:158,0x0178:159};
+function toCodes(s){const out=[];for(const ch of s.normalize('NFC')){const u=ch.codePointAt(0);
+  if(u>=32&&u<127||u>=160&&u<256)out.push(u);else if(CP1252[u])out.push(CP1252[u]);else if(u===9)out.push(32);else out.push(63);}return out;}
+
+class MiniPDF{
+  constructor(){this.W=210;this.H=297;this.k=72/25.4;this.pages=[];this.images=[];}
+  addPage(){this.cur=[];this.pages.push(this.cur);}
+  n(v){return (Math.round(v*1000)/1000).toString();}
+  X(mm){return this.n(mm*this.k);} Y(mm){return this.n((this.H-mm)*this.k);}
+  width(s,size,bold){const w=WIDTHS[bold?'Helvetica-Bold':'Helvetica'];let t=0;for(const c of toCodes(s))t+=w[c-32]||556;return t/1000*size/this.k;}
+  wrap(s,size,bold,maxW){const words=s.split(/\s+/).filter(Boolean),lines=[];let line='';
+    for(const w of words){const t=line?line+' '+w:w;if(this.width(t,size,bold)<=maxW||!line)line=t;else{lines.push(line);line=w;}}
+    if(line)lines.push(line);return lines.map(l=>{while(l.length>1&&this.width(l,size,bold)>maxW)l=l.slice(0,-2)+'…';return l;});}
+  text(s,x,y,o){o=o||{};const size=o.size||10,bold=!!o.bold,gray=o.gray==null?0:o.gray;
+    if(o.align==='right')x-=this.width(s,size,bold);else if(o.align==='center')x-=this.width(s,size,bold)/2;
+    let lit='';for(const c of toCodes(s)){if(c===40||c===41||c===92)lit+='\\'+String.fromCharCode(c);else if(c>126)lit+='\\'+c.toString(8).padStart(3,'0');else lit+=String.fromCharCode(c);}
+    this.cur.push('BT /'+(bold?'F2':'F1')+' '+size+' Tf '+this.n(gray)+' g '+this.X(x)+' '+this.Y(y)+' Td ('+lit+') Tj ET');}
+  line(x1,y1,x2,y2,lw,gray){this.cur.push(this.n(gray)+' G '+this.n(lw*this.k)+' w '+this.X(x1)+' '+this.Y(y1)+' m '+this.X(x2)+' '+this.Y(y2)+' l S');}
+  rect(x,y,w,h,lw,gray){this.cur.push(this.n(gray)+' G '+this.n(lw*this.k)+' w '+this.X(x)+' '+this.Y(y+h)+' '+this.n(w*this.k)+' '+this.n(h*this.k)+' re S');}
+  image(jpeg,pw,ph,x,y,w,h){const id=this.images.length+1;this.images.push({jpeg,pw,ph});
+    this.cur.push('q '+this.n(w*this.k)+' 0 0 '+this.n(h*this.k)+' '+this.X(x)+' '+this.Y(y+h)+' cm /Im'+id+' Do Q');}
+  output(){const parts=[],offs=[];let len=0;const enc=new TextEncoder();
+    const push=p=>{const b=typeof p==='string'?enc.encode(p):p;parts.push(b);len+=b.length;};
+    const obj=(n,body)=>{offs[n]=len;push(n+' 0 obj\n');if(Array.isArray(body))body.forEach(push);else push(body);push('\nendobj\n');};
+    push('%PDF-1.4\n%âãÏÓ\n');
+    const nP=this.pages.length,nI=this.images.length;
+    // 1 Catalog, 2 Pages, 3 F1, 4 F2, 5.. Images, dann je Seite: Page + Content
+    const imgBase=5,pageBase=imgBase+nI;
+    obj(1,'<< /Type /Catalog /Pages 2 0 R >>');
+    const kids=[];for(let i=0;i<nP;i++)kids.push((pageBase+i*2)+' 0 R');
+    obj(2,'<< /Type /Pages /Count '+nP+' /Kids ['+kids.join(' ')+'] >>');
+    obj(3,'<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>');
+    obj(4,'<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>');
+    this.images.forEach((im,i)=>obj(imgBase+i,['<< /Type /XObject /Subtype /Image /Width '+im.pw+' /Height '+im.ph+' /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length '+im.jpeg.length+' >>\nstream\n',im.jpeg,'\nendstream']));
+    let xo='';this.images.forEach((im,i)=>{xo+='/Im'+(i+1)+' '+(imgBase+i)+' 0 R ';});
+    const res='<< /Font << /F1 3 0 R /F2 4 0 R >> /XObject << '+xo+'>> >>';
+    this.pages.forEach((ops,i)=>{const pn=pageBase+i*2,cn=pn+1;const content=ops.join('\n');
+      obj(pn,'<< /Type /Page /Parent 2 0 R /MediaBox [0 0 '+this.X(this.W)+' '+this.n(this.H*this.k)+'] /Resources '+res+' /Contents '+cn+' 0 R >>');
+      obj(cn,'<< /Length '+enc.encode(content).length+' >>\nstream\n'+content+'\nendstream');});
+    const total=pageBase+nP*2;const xref=len;
+    let x='xref\n0 '+total+'\n0000000000 65535 f \n';for(let i=1;i<total;i++)x+=String(offs[i]).padStart(10,'0')+' 00000 n \n';
+    push(x+'trailer\n<< /Size '+total+' /Root 1 0 R >>\nstartxref\n'+xref+'\n%%EOF\n');
+    return new Blob(parts,{type:'application/pdf'});}
+}
+
+function buildPdf(){const doc=new MiniPDF();
+  const W=210,H=297,M=18;const pages=pageCount();
+  const head=headText(), foot=footText(), part=partText();
+  const ruleY=part?M+12:M+8;const top=ruleY+6, bottom=H-M-10, gap=8;
+  const cols=perPage===4?2:1, rows=perPage===1?1:2;
+  const slotW=(W-2*M-(cols-1)*gap)/cols, slotH=(bottom-top-(rows-1)*gap)/rows;
+  const capH=perPage===4?13:14, fs=perPage===4?8:9;
+  for(let p=0;p<pages;p++){doc.addPage();
+    doc.text(doc.wrap(head,12,true,W-2*M-30)[0],M,M+4,{size:12,bold:true,gray:.08});
+    doc.text(dateStr,W-M,M+4,{size:9,gray:.35,align:'right'});
+    if(part)doc.text('Anlagenteil: '+part,M,M+9,{size:9.5,gray:.24});
+    doc.line(M,ruleY,W-M,ruleY,0.5,.08);
+    for(let k=0;k<perPage;k++){const idx=p*perPage+k;const ph=photos[idx];if(!ph)break;
+      const c=k%cols,r=Math.floor(k/cols);const sx=M+c*(slotW+gap),sy=top+r*(slotH+gap);
+      const maxH=slotH-capH;const s=Math.min(slotW/ph.w,maxH/ph.h);const w=ph.w*s,h=ph.h*s;
+      const x=sx+(slotW-w)/2,y0=sy+(maxH-h)/2;
+      doc.image(ph.jpeg,ph.w,ph.h,x,y0,w,h);doc.rect(x,y0,w,h,0.2,.67);
+      const tw=Math.max(w,70),ty=y0+h+4.5;
+      doc.text('Lfd. Nr. '+(idx+1),x,ty,{size:fs,bold:true,gray:.08});
+      if(ph.taken)doc.text('Aufnahme: '+ph.taken,x+tw,ty,{size:fs,gray:.35,align:'right'});
+      if(ph.text.trim())doc.wrap(ph.text.trim(),fs,false,tw).slice(0,2).forEach((l,j)=>doc.text(l,x,ty+fs*0.42+j*fs*0.41,{size:fs,gray:.24}));}
+    const fy=H-M;doc.line(M,fy-5,W-M,fy-5,0.2,.67);
+    if(foot)doc.text(doc.wrap(foot,8.5,false,W/2-M-14)[0],M,fy,{size:8.5,gray:.35});
+    doc.text(dateStr,W/2,fy,{size:8.5,gray:.35,align:'center'});
+    doc.text('Seite '+(p+1)+' von '+pages,W-M,fy,{size:8.5,gray:.35,align:'right'});}
+  return doc.output();}
+
+/* ---------- Speichern / Teilen ---------- */
+async function deliver(blob,name){
+  const file=new File([blob],name,{type:'application/pdf'});
+  if(navigator.canShare&&navigator.canShare({files:[file]})){
+    try{await navigator.share({files:[file]});return 'saved';}
+    catch(e){if(e.name==='AbortError')return 'cancelled';if(e.name==='NotAllowedError')return 'needtap';throw e;}}
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();a.remove();
+  setTimeout(()=>URL.revokeObjectURL(a.href),60000);return 'saved';}
+
+function fileName(){const slug=(headText()+(partText()?' '+partText():'')).replace(/^Lichtbildmappe\s*(zu\s*)?/i,'')
+  .replace(/[^\wäöüÄÖÜß-]+/g,'_').replace(/^_+|_+$/g,'').slice(0,80);
+  return 'Lichtbildmappe_'+fileDate+(slug?'_'+slug:'')+'.pdf';}
+
+let pending=null; // fertige PDF, falls iOS einen zweiten Tipp verlangt
+$('make').addEventListener('click',async()=>{if(!photos.length)return;
+  $('make').disabled=true;
+  try{const sig=photos.length+'|'+headText()+'|'+partText()+'|'+footText()+'|'+photos.map(p=>p.text).join('|');
+    if(!pending||pending.sig!==sig){status('PDF wird erstellt …');pending={sig,blob:buildPdf(),name:fileName()};}
+    const r=await deliver(pending.blob,pending.name);
+    if(r==='needtap'){status('PDF ist fertig. Tippe noch einmal auf „PDF erstellen“ zum Teilen.');return;}
+    if(r==='cancelled'){status('Speichern abgebrochen.');return;}
+    await archiveAdd(pending);status('PDF gespeichert und im Archiv abgelegt.');pending=null;
+  }catch(e){status('PDF konnte nicht erstellt werden ('+(e.message||e)+').',true);}
+  finally{$('make').disabled=!photos.length;}});
+
+/* ---------- Archiv (lokal auf dem iPhone, IndexedDB) ---------- */
+let dbp=null;
+function idb(){if(dbp)return dbp;dbp=new Promise((res,rej)=>{const r=indexedDB.open('lichtbildmappe',1);
+  r.onupgradeneeded=()=>{const d=r.result;d.createObjectStore('meta',{keyPath:'id'});d.createObjectStore('files');};
+  r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error);});return dbp;}
+function tx(store,mode,fn){return idb().then(d=>new Promise((res,rej)=>{const t=d.transaction(store,mode);let out;
+  Promise.resolve(fn(t)).then(v=>out=v);t.oncomplete=()=>res(out);t.onerror=()=>rej(t.error);t.onabort=()=>rej(t.error);}));}
+const reqP=r=>new Promise((res,rej)=>{r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error);});
+
+async function archiveAdd(p){const id='m'+Date.now();const buf=await p.blob.arrayBuffer();
+  const meta={id,createdAt:Date.now(),fileName:p.name,title:headText(),part:partText(),photos:photos.length,pages:pageCount(),sizeBytes:buf.byteLength};
+  await tx(['meta','files'],'readwrite',t=>{t.objectStore('meta').put(meta);t.objectStore('files').put(buf,id);});
+  renderArchive();}
+const cache={};let armed=null;
+const fmtDT=ms=>{const d=new Date(ms);return pad(d.getDate())+'.'+pad(d.getMonth()+1)+'.'+d.getFullYear()+', '+pad(d.getHours())+':'+pad(d.getMinutes())+' Uhr';};
+const fmtSize=b=>b>1048576?(b/1048576).toFixed(1).replace('.',',')+' MB':Math.max(1,Math.round(b/1024))+' KB';
+
+async function renderArchive(){let list=[];
+  try{list=await tx('meta','readonly',t=>reqP(t.objectStore('meta').getAll()));}
+  catch(e){$('archNote').textContent='Archiv konnte nicht geladen werden.';return;}
+  list.sort((a,b)=>b.createdAt-a.createdAt);
+  const L=$('arch');L.innerHTML='';
+  $('archCount').textContent=list.length?list.length+(list.length===1?' Mappe':' Mappen'):'';
+  $('archNote').hidden=!!list.length;$('archNote').textContent='Noch keine Mappen archiviert. Jede PDF, die du speicherst, landet automatisch hier.';
+  list.forEach(m=>{const li=document.createElement('li');li.className='arow';
+    li.innerHTML='<div class="ainfo"><b></b><small class="asub"></small><small class="ameta"></small></div>'+
+      '<div class="actl"><button type="button" class="open">Öffnen</button><button type="button" class="del"></button></div>';
+    li.querySelector('b').textContent=m.title||'Lichtbildmappe';
+    const sub=li.querySelector('.asub');sub.textContent=m.part?'Anlagenteil: '+m.part:'';sub.hidden=!m.part;
+    li.querySelector('.ameta').textContent=fmtDT(m.createdAt)+' · '+m.photos+' Fotos · '+m.pages+(m.pages===1?' Seite':' Seiten')+' · '+fmtSize(m.sizeBytes||0);
+    const open=li.querySelector('.open');if(cache[m.id])open.textContent='Teilen';
+    const del=li.querySelector('.del');del.textContent=armed===m.id?'Wirklich löschen?':'Löschen';del.classList.toggle('armed',armed===m.id);
+    open.onclick=()=>archiveOpen(m,open);
+    del.onclick=()=>{if(armed!==m.id){armed=m.id;renderArchive();return;}armed=null;archiveDelete(m);};
+    L.appendChild(li);});}
+
+async function archiveOpen(m,btn){
+  try{if(!cache[m.id]){const buf=await tx('files','readonly',t=>reqP(t.objectStore('files').get(m.id)));
+      if(!buf)throw new Error('Datei nicht gefunden');cache[m.id]=new Blob([buf],{type:'application/pdf'});}
+    const r=await deliver(cache[m.id],m.fileName||'Lichtbildmappe.pdf');
+    if(r==='needtap'){btn.textContent='Teilen';status('Bereit. Tippe noch einmal auf „Teilen“.');return;}
+    status(r==='cancelled'?'Abgebrochen.':'PDF übergeben: '+m.fileName);
+  }catch(e){status('Mappe konnte nicht geöffnet werden ('+(e.message||e)+').',true);}}
+
+async function archiveDelete(m){
+  try{await tx(['meta','files'],'readwrite',t=>{t.objectStore('meta').delete(m.id);t.objectStore('files').delete(m.id);});
+    delete cache[m.id];status('„'+(m.fileName||'Mappe')+'“ gelöscht.');renderArchive();
+  }catch(e){status('Löschen fehlgeschlagen ('+(e.message||e)+').',true);}}
+
+/* ---------- Offline-Betrieb ---------- */
+if('serviceWorker' in navigator){
+  navigator.serviceWorker.register('sw.js').then(()=>navigator.serviceWorker.ready)
+    .then(()=>{$('offline').textContent='✓ Offline bereit · Version 1';})
+    .catch(()=>{$('offline').textContent='Offline-Modus nicht aktiv';});
+}
+if(navigator.storage&&navigator.storage.persist)navigator.storage.persist().catch(()=>{});
+
+renderList();renderArchive();
+</script>
+</body>
+</html>
