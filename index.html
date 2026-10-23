@@ -70,6 +70,15 @@ input:focus-visible,select:focus-visible,button:focus-visible{outline:3px solid 
 .ctl button.del{color:var(--danger);margin-left:auto}
 .ctl button:disabled{opacity:.35}
 .empty{border:1.5px dashed var(--line);border-radius:8px;padding:16px 12px;text-align:center;color:var(--muted)}
+.editbar{display:flex;align-items:center;gap:10px;justify-content:space-between;background:var(--accent);color:var(--accent-fg);border-radius:10px;padding:9px 12px;font-size:.9rem}
+.editbar b{font-weight:600}
+.editbar button{font:inherit;font-size:.85rem;font-weight:600;border:1px solid currentColor;border-radius:8px;background:transparent;color:inherit;padding:6px 10px;flex:0 0 auto}
+textarea.small{width:100%;font:inherit;font-size:.95rem;padding:7px 10px;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--fg);resize:none;line-height:1.35}
+textarea:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.upd{position:fixed;left:0;right:0;top:0;z-index:40;padding:calc(10px + env(safe-area-inset-top,0px)) max(16px,env(safe-area-inset-right,0px)) 10px max(16px,env(safe-area-inset-left,0px));
+  background:var(--fg);color:var(--bg);font:inherit;font-weight:600;font-size:.95rem;border:0;width:100%;text-align:center}
+.actl .edit{font-weight:500}
+.ainfo .aupd{font-style:italic}
 .status{min-height:1.4em;font-size:.9rem;color:var(--muted);text-align:center;margin:0}
 .status.err{color:var(--danger)}
 
@@ -129,6 +138,7 @@ input:focus-visible,select:focus-visible,button:focus-visible{outline:3px solid 
     <input type="text" id="foot" autocomplete="off" placeholder="z. B. Firma, Objekt, Auftragsnummer">
   </div>
 
+  <div id="editbar" class="editbar" hidden><span>Bearbeitung: <b id="editWhat"></b></span><button type="button" id="editCancel">Abbrechen</button></div>
   <div class="picks">
     <button type="button" class="btn primary" id="camBtn">📷 Kamera</button>
     <label class="btn" for="lib">🖼 Fotos wählen
@@ -137,7 +147,7 @@ input:focus-visible,select:focus-visible,button:focus-visible{outline:3px solid 
   <input id="camFallback" type="file" accept="image/*" capture="environment" hidden>
 
   <section class="page" aria-label="Seitenvorschau">
-    <div class="ph"><div class="hd"><b id="pHead"></b><small id="pPart" hidden></small></div><span id="pDate"></span></div>
+    <div class="ph"><div class="hd"><b id="pHead"></b><small id="pPart" hidden></small></div></div>
     <div id="list" class="list" hidden></div>
     <div id="empty" class="empty">Noch keine Fotos. Tippe auf <b>Kamera</b> und löse beliebig oft aus, oder hole Fotos mit <b>Fotos wählen</b>.</div>
     <div class="pf"><span id="pFoot"></span><span id="pPage"></span></div>
@@ -154,6 +164,7 @@ input:focus-visible,select:focus-visible,button:focus-visible{outline:3px solid 
   </section>
 </div>
 
+<button type="button" id="upd" class="upd" hidden>Neue Version verfügbar – Tippen zum Aktualisieren</button>
 <div id="cam" class="cam" hidden>
   <video id="vid" playsinline muted autoplay></video>
   <div class="flash" id="flash"></div>
@@ -185,8 +196,8 @@ function status(m,err){const s=$('status');s.textContent=m||'';s.className='stat
 /* ---------- Kopf, Anlagenteil, Fuß ---------- */
 $('head').value=load('lbm-head',DEF_HEAD);
 $('foot').value=load('lbm-foot',DEF_FOOT);
-$('head').addEventListener('input',()=>{save('lbm-head',$('head').value);renderFrame();});
-$('foot').addEventListener('input',()=>{save('lbm-foot',$('foot').value);renderFrame();});
+$('head').addEventListener('input',()=>{if(!editing)save('lbm-head',$('head').value);renderFrame();});
+$('foot').addEventListener('input',()=>{if(!editing)save('lbm-foot',$('foot').value);renderFrame();});
 $('headReset').onclick=()=>{$('head').value=DEF_HEAD;save('lbm-head',DEF_HEAD);renderFrame();};
 $('footReset').onclick=()=>{$('foot').value=DEF_FOOT;save('lbm-foot',DEF_FOOT);renderFrame();};
 
@@ -197,7 +208,7 @@ function fillParts(sel){const s=$('part');s.innerHTML='';
   parts.forEach(p=>{const o=document.createElement('option');o.value=p;o.textContent=p;s.appendChild(o);});
   s.value=parts.includes(sel)?sel:'';$('partDel').disabled=!s.value;}
 fillParts(load('lbm-part',''));
-$('part').addEventListener('change',()=>{save('lbm-part',$('part').value);$('partDel').disabled=!$('part').value;renderFrame();});
+$('part').addEventListener('change',()=>{if(!editing)save('lbm-part',$('part').value);$('partDel').disabled=!$('part').value;renderFrame();});
 function addPart(){const v=$('partNew').value.trim();if(!v)return;
   if(!parts.includes(v)){parts.push(v);save('lbm-parts',JSON.stringify(parts));}
   $('partNew').value='';fillParts(v);save('lbm-part',v);renderFrame();status('„'+v+'“ hinzugefügt und ausgewählt');}
@@ -251,12 +262,17 @@ async function addFiles(list,fromCamera){const files=[...list];if(!files.length)
 $('lib').addEventListener('change',e=>{addFiles(e.target.files,false);e.target.value='';});
 $('camFallback').addEventListener('change',e=>{addFiles(e.target.files,true);e.target.value='';});
 
-/* ---------- Live-Kamera: auslösen ohne Rückfrage ---------- */
+/* ---------- Live-Kamera: auslösen ohne Rückfrage ----------
+   Der Kamera-Zugriff wird einmal pro App-Start geholt und bis zum Schließen der App behalten
+   (nur pausiert), damit iOS nicht bei jedem Öffnen der Kamera erneut fragt. */
 let stream=null,shots=0;
+const camLive=()=>stream&&stream.getVideoTracks().some(t=>t.readyState==='live');
 $('camBtn').onclick=async()=>{
   if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){$('camFallback').click();return;}
-  try{stream=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:{ideal:'environment'},width:{ideal:4032},height:{ideal:3024}}});}
-  catch(e){status('Kein Zugriff auf die Kamera. Erlaube ihn unter Einstellungen › Safari › Kamera oder nutze „Fotos wählen“.',true);return;}
+  if(!camLive()){
+    try{stream=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:{ideal:'environment'},width:{ideal:4032},height:{ideal:3024}}});}
+    catch(e){stream=null;status('Kein Zugriff auf die Kamera. Erlaube ihn in der Abfrage oder nutze „Fotos wählen“.',true);return;}}
+  stream.getVideoTracks().forEach(t=>t.enabled=true);
   shots=0;$('camCount').textContent='0 Fotos';$('camLast').hidden=true;
   $('vid').srcObject=stream;$('cam').hidden=false;document.body.classList.add('camopen');
   try{await $('vid').play();}catch(e){}};
@@ -266,29 +282,32 @@ $('shutter').onclick=async()=>{const v=$('vid');if(!v.videoWidth)return;
   try{const p=await canvasToPhoto(v,v.videoWidth,v.videoHeight,new Date());photos.push(p);
     $('camLast').src=p.thumb;$('camLast').hidden=false;renderList();}
   catch(e){status(e.message,true);}};
-function closeCam(){if(stream){stream.getTracks().forEach(t=>t.stop());stream=null;}
-  $('vid').srcObject=null;$('cam').hidden=true;document.body.classList.remove('camopen');
+function closeCam(){
+  if(stream)stream.getVideoTracks().forEach(t=>t.enabled=false); // pausieren statt beenden
+  $('vid').pause();$('cam').hidden=true;document.body.classList.remove('camopen');
   if(shots)status(photos.length+(photos.length===1?' Foto':' Fotos')+' in der Mappe');}
 $('camDone').onclick=closeCam;
-document.addEventListener('visibilitychange',()=>{if(document.hidden&&stream)closeCam();});
+document.addEventListener('visibilitychange',()=>{if(document.hidden&&!$('cam').hidden)closeCam();});
 
 /* ---------- Ansicht ---------- */
 function renderFrame(){
-  $('pHead').textContent=headText();$('pDate').textContent=dateStr;
+  $('pHead').textContent=headText();
   const pt=partText();$('pPart').hidden=!pt;$('pPart').textContent=pt?'Anlagenteil: '+pt:'';
   const f=footText();$('pFoot').textContent=f?f+' · '+dateStr:dateStr;
   const n=pageCount();$('pPage').textContent='Seite 1 von '+n;
-  $('make').textContent=photos.length?'PDF erstellen ('+n+(n===1?' Seite)':' Seiten)'):'PDF erstellen';
+  const verb=editing?'Änderungen speichern':'PDF erstellen';$('make').textContent=photos.length?verb+' ('+n+(n===1?' Seite)':' Seiten)'):verb;
   $('make').disabled=!photos.length;}
 
 function renderList(){const L=$('list');L.innerHTML='';
   photos.forEach((p,i)=>{const r=document.createElement('div');r.className='row';
     r.innerHTML='<div class="thumb"><img alt=""></div><div class="meta"><span class="nr"></span>'+
-      '<input type="text" class="small" placeholder="Beschreibung (optional)" autocomplete="off">'+
+      '<textarea class="small" rows="2" maxlength="240" placeholder="Beschreibung (optional, bis 3 Zeilen)"></textarea>'+
       '<div class="ctl"><button type="button" aria-label="Nach oben">↑</button><button type="button" aria-label="Nach unten">↓</button><button type="button" class="del">Löschen</button></div></div>';
     const img=r.querySelector('img');img.src=p.thumb;img.alt='Foto '+(i+1);
     const nr=r.querySelector('.nr');nr.textContent='Lfd. Nr. '+(i+1)+' ';const tk=document.createElement('span');tk.className='tk';tk.textContent='· '+p.taken;nr.appendChild(tk);
-    const inp=r.querySelector('input');inp.id='cap'+i;inp.value=p.text;inp.oninput=()=>{p.text=inp.value;};
+    const inp=r.querySelector('textarea');inp.id='cap'+i;inp.value=p.text;
+    const fit=()=>{inp.style.height='auto';inp.style.height=inp.scrollHeight+2+'px';};
+    inp.oninput=()=>{const lines=inp.value.split('\n');if(lines.length>3)inp.value=lines.slice(0,3).join('\n');p.text=inp.value;fit();};requestAnimationFrame(fit);
     const b=r.querySelectorAll('.ctl button');b[0].disabled=i===0;b[1].disabled=i===photos.length-1;
     b[0].onclick=()=>{[photos[i-1],photos[i]]=[photos[i],photos[i-1]];renderList();};
     b[1].onclick=()=>{[photos[i+1],photos[i]]=[photos[i],photos[i+1]];renderList();};
@@ -349,10 +368,9 @@ function buildPdf(){const doc=new MiniPDF();
   const ruleY=part?M+12:M+8;const top=ruleY+6, bottom=H-M-10, gap=8;
   const cols=perPage===4?2:1, rows=perPage===1?1:2;
   const slotW=(W-2*M-(cols-1)*gap)/cols, slotH=(bottom-top-(rows-1)*gap)/rows;
-  const capH=perPage===4?13:14, fs=perPage===4?8:9;
+  const capH=perPage===4?18:19, fs=perPage===4?8:9;
   for(let p=0;p<pages;p++){doc.addPage();
-    doc.text(doc.wrap(head,12,true,W-2*M-30)[0],M,M+4,{size:12,bold:true,gray:.08});
-    doc.text(dateStr,W-M,M+4,{size:9,gray:.35,align:'right'});
+    doc.text(doc.wrap(head,12,true,W-2*M)[0],M,M+4,{size:12,bold:true,gray:.08});
     if(part)doc.text('Anlagenteil: '+part,M,M+9,{size:9.5,gray:.24});
     doc.line(M,ruleY,W-M,ruleY,0.5,.08);
     for(let k=0;k<perPage;k++){const idx=p*perPage+k;const ph=photos[idx];if(!ph)break;
@@ -363,7 +381,7 @@ function buildPdf(){const doc=new MiniPDF();
       const tw=Math.max(w,70),ty=y0+h+4.5;
       doc.text('Lfd. Nr. '+(idx+1),x,ty,{size:fs,bold:true,gray:.08});
       if(ph.taken)doc.text('Aufnahme: '+ph.taken,x+tw,ty,{size:fs,gray:.35,align:'right'});
-      if(ph.text.trim())doc.wrap(ph.text.trim(),fs,false,tw).slice(0,2).forEach((l,j)=>doc.text(l,x,ty+fs*0.42+j*fs*0.41,{size:fs,gray:.24}));}
+      if(ph.text.trim())ph.text.trim().split(/\n/).flatMap(t=>doc.wrap(t,fs,false,tw)).slice(0,3).forEach((l,j)=>doc.text(l,x,ty+fs*0.42+j*fs*0.41,{size:fs,gray:.24}));}
     const fy=H-M;doc.line(M,fy-5,W-M,fy-5,0.2,.67);
     if(foot)doc.text(doc.wrap(foot,8.5,false,W/2-M-14)[0],M,fy,{size:8.5,gray:.35});
     doc.text(dateStr,W/2,fy,{size:8.5,gray:.35,align:'center'});
@@ -383,31 +401,49 @@ function fileName(){const slug=(headText()+(partText()?' '+partText():'')).repla
   .replace(/[^\wäöüÄÖÜß-]+/g,'_').replace(/^_+|_+$/g,'').slice(0,80);
   return 'Lichtbildmappe_'+fileDate+(slug?'_'+slug:'')+'.pdf';}
 
-let pending=null; // fertige PDF, falls iOS einen zweiten Tipp verlangt
+let editing=null;  // {id, meta} wenn eine Archiv-Mappe bearbeitet wird
+let pending=null;  // fertige PDF, falls iOS einen zweiten Tipp verlangt
+const sigNow=()=>photos.length+'|'+headText()+'|'+partText()+'|'+footText()+'|'+photos.map(p=>p.text).join('|')+'|'+(editing?editing.id:'');
+
 $('make').addEventListener('click',async()=>{if(!photos.length)return;
   $('make').disabled=true;
-  try{const sig=photos.length+'|'+headText()+'|'+partText()+'|'+footText()+'|'+photos.map(p=>p.text).join('|');
-    if(!pending||pending.sig!==sig){status('PDF wird erstellt …');pending={sig,blob:buildPdf(),name:fileName()};}
+  try{
+    if(!pending||pending.sig!==sigNow()){
+      status('PDF wird erstellt …');
+      const name=editing?(editing.meta.fileName||fileName()):fileName();
+      const p={sig:sigNow(),blob:buildPdf(),name,stored:false};
+      // zuerst im Archiv sichern (neu oder als überarbeitete Fassung)
+      await archivePut(p,editing);p.stored=true;pending=p;
+      if(editing){const was=editing;endEdit();status('Änderungen an „'+(was.meta.title||'Mappe')+'“ gespeichert.');}
+    }
     const r=await deliver(pending.blob,pending.name);
-    if(r==='needtap'){status('PDF ist fertig. Tippe noch einmal auf „PDF erstellen“ zum Teilen.');return;}
-    if(r==='cancelled'){status('Speichern abgebrochen.');return;}
-    await archiveAdd(pending);status('PDF gespeichert und im Archiv abgelegt.');pending=null;
+    if(r==='needtap'){status(photos.length?'Im Archiv gespeichert. Tippe noch einmal zum Teilen.':'Gespeichert. Zum Teilen im Archiv auf „Öffnen“ tippen.');if(!photos.length)pending=null;return;}
+    if(r==='cancelled'){status('Im Archiv gespeichert. Teilen abgebrochen.');return;}
+    status('PDF geteilt und im Archiv gespeichert.');pending=null;
   }catch(e){status('PDF konnte nicht erstellt werden ('+(e.message||e)+').',true);}
-  finally{$('make').disabled=!photos.length;}});
+  finally{renderFrame();}});
 
 /* ---------- Archiv (lokal auf dem iPhone, IndexedDB) ---------- */
 let dbp=null;
-function idb(){if(dbp)return dbp;dbp=new Promise((res,rej)=>{const r=indexedDB.open('lichtbildmappe',1);
-  r.onupgradeneeded=()=>{const d=r.result;d.createObjectStore('meta',{keyPath:'id'});d.createObjectStore('files');};
+function idb(){if(dbp)return dbp;dbp=new Promise((res,rej)=>{const r=indexedDB.open('lichtbildmappe',2);
+  r.onupgradeneeded=()=>{const d=r.result;
+    if(!d.objectStoreNames.contains('meta'))d.createObjectStore('meta',{keyPath:'id'});
+    if(!d.objectStoreNames.contains('files'))d.createObjectStore('files');
+    if(!d.objectStoreNames.contains('sources'))d.createObjectStore('sources');};
   r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error);});return dbp;}
 function tx(store,mode,fn){return idb().then(d=>new Promise((res,rej)=>{const t=d.transaction(store,mode);let out;
   Promise.resolve(fn(t)).then(v=>out=v);t.oncomplete=()=>res(out);t.onerror=()=>rej(t.error);t.onabort=()=>rej(t.error);}));}
 const reqP=r=>new Promise((res,rej)=>{r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error);});
 
-async function archiveAdd(p){const id='m'+Date.now();const buf=await p.blob.arrayBuffer();
-  const meta={id,createdAt:Date.now(),fileName:p.name,title:headText(),part:partText(),photos:photos.length,pages:pageCount(),sizeBytes:buf.byteLength};
-  await tx(['meta','files'],'readwrite',t=>{t.objectStore('meta').put(meta);t.objectStore('files').put(buf,id);});
-  renderArchive();}
+async function archivePut(p,ed){
+  const id=ed?ed.id:'m'+Date.now();const buf=await p.blob.arrayBuffer();
+  const meta={id,createdAt:ed?ed.meta.createdAt:Date.now(),updatedAt:ed?Date.now():null,fileName:p.name,
+    title:headText(),part:partText(),photos:photos.length,pages:pageCount(),sizeBytes:buf.byteLength,editable:true};
+  const src={head:headText(),part:partText(),foot:footText(),
+    photos:photos.map(ph=>({jpeg:ph.jpeg.slice().buffer,w:ph.w,h:ph.h,text:ph.text,taken:ph.taken}))};
+  await tx(['meta','files','sources'],'readwrite',t=>{t.objectStore('meta').put(meta);t.objectStore('files').put(buf,id);t.objectStore('sources').put(src,id);});
+  delete cache[id];renderArchive();}
+
 const cache={};let armed=null;
 const fmtDT=ms=>{const d=new Date(ms);return pad(d.getDate())+'.'+pad(d.getMonth()+1)+'.'+d.getFullYear()+', '+pad(d.getHours())+':'+pad(d.getMinutes())+' Uhr';};
 const fmtSize=b=>b>1048576?(b/1048576).toFixed(1).replace('.',',')+' MB':Math.max(1,Math.round(b/1024))+' KB';
@@ -418,16 +454,19 @@ async function renderArchive(){let list=[];
   list.sort((a,b)=>b.createdAt-a.createdAt);
   const L=$('arch');L.innerHTML='';
   $('archCount').textContent=list.length?list.length+(list.length===1?' Mappe':' Mappen'):'';
-  $('archNote').hidden=!!list.length;$('archNote').textContent='Noch keine Mappen archiviert. Jede PDF, die du speicherst, landet automatisch hier.';
+  $('archNote').hidden=!!list.length;$('archNote').textContent='Noch keine Mappen archiviert. Jede PDF, die du erstellst, landet automatisch hier.';
   list.forEach(m=>{const li=document.createElement('li');li.className='arow';
-    li.innerHTML='<div class="ainfo"><b></b><small class="asub"></small><small class="ameta"></small></div>'+
-      '<div class="actl"><button type="button" class="open">Öffnen</button><button type="button" class="del"></button></div>';
+    li.innerHTML='<div class="ainfo"><b></b><small class="asub"></small><small class="ameta"></small><small class="aupd"></small></div>'+
+      '<div class="actl"><button type="button" class="open">Öffnen</button><button type="button" class="edit">Bearbeiten</button><button type="button" class="del"></button></div>';
     li.querySelector('b').textContent=m.title||'Lichtbildmappe';
     const sub=li.querySelector('.asub');sub.textContent=m.part?'Anlagenteil: '+m.part:'';sub.hidden=!m.part;
     li.querySelector('.ameta').textContent=fmtDT(m.createdAt)+' · '+m.photos+' Fotos · '+m.pages+(m.pages===1?' Seite':' Seiten')+' · '+fmtSize(m.sizeBytes||0);
+    const up=li.querySelector('.aupd');up.textContent=m.updatedAt?'bearbeitet am '+fmtDT(m.updatedAt):'';up.hidden=!m.updatedAt;
     const open=li.querySelector('.open');if(cache[m.id])open.textContent='Teilen';
+    const edit=li.querySelector('.edit');edit.hidden=!m.editable;edit.disabled=!!editing;
     const del=li.querySelector('.del');del.textContent=armed===m.id?'Wirklich löschen?':'Löschen';del.classList.toggle('armed',armed===m.id);
     open.onclick=()=>archiveOpen(m,open);
+    edit.onclick=()=>startEdit(m);
     del.onclick=()=>{if(armed!==m.id){armed=m.id;renderArchive();return;}armed=null;archiveDelete(m);};
     L.appendChild(li);});}
 
@@ -440,15 +479,56 @@ async function archiveOpen(m,btn){
   }catch(e){status('Mappe konnte nicht geöffnet werden ('+(e.message||e)+').',true);}}
 
 async function archiveDelete(m){
-  try{await tx(['meta','files'],'readwrite',t=>{t.objectStore('meta').delete(m.id);t.objectStore('files').delete(m.id);});
-    delete cache[m.id];status('„'+(m.fileName||'Mappe')+'“ gelöscht.');renderArchive();
+  try{await tx(['meta','files','sources'],'readwrite',t=>{t.objectStore('meta').delete(m.id);t.objectStore('files').delete(m.id);t.objectStore('sources').delete(m.id);});
+    delete cache[m.id];if(editing&&editing.id===m.id)endEdit();
+    status('„'+(m.fileName||'Mappe')+'“ gelöscht.');renderArchive();
   }catch(e){status('Löschen fehlgeschlagen ('+(e.message||e)+').',true);}}
 
-/* ---------- Offline-Betrieb ---------- */
+/* ---------- Archiv-Mappe nachträglich bearbeiten ---------- */
+async function startEdit(m){
+  if(photos.length&&!editing){status('Erstelle oder lösche zuerst die aktuelle Mappe, bevor du eine Archiv-Mappe bearbeitest.',true);return;}
+  try{const src=await tx('sources','readonly',t=>reqP(t.objectStore('sources').get(m.id)));
+    if(!src)throw new Error('Für diese Mappe sind keine Fotos gespeichert');
+    clearPhotos();
+    src.photos.forEach(ph=>{const u8=new Uint8Array(ph.jpeg);
+      photos.push({jpeg:u8,thumb:URL.createObjectURL(new Blob([u8],{type:'image/jpeg'})),w:ph.w,h:ph.h,text:ph.text||'',taken:ph.taken});});
+    $('head').value=src.head||DEF_HEAD;$('foot').value=src.foot||'';
+    if(src.part&&!parts.includes(src.part)){fillParts('');const o=document.createElement('option');o.value=o.textContent=src.part;$('part').appendChild(o);}
+    else fillParts(src.part||'');
+    $('part').value=src.part||'';
+    editing={id:m.id,meta:m};pending=null;
+    $('editWhat').textContent=(m.title||'Mappe')+' vom '+fmtDT(m.createdAt).split(',')[0];
+    $('editbar').hidden=false;renderList();renderArchive();
+    window.scrollTo({top:0,behavior:'smooth'});status('Mappe geladen. Ändere Fotos oder Texte und tippe auf „Änderungen speichern“.');
+  }catch(e){status('Bearbeiten nicht möglich ('+(e.message||e)+').',true);}}
+
+function clearPhotos(){photos.forEach(p=>URL.revokeObjectURL(p.thumb));photos.length=0;}
+function endEdit(){
+  editing=null;$('editbar').hidden=true;
+  clearPhotos();
+  // gespeicherte Standardwerte wiederherstellen
+  $('head').value=load('lbm-head',DEF_HEAD);$('foot').value=load('lbm-foot',DEF_FOOT);fillParts(load('lbm-part',''));
+  renderList();renderArchive();}
+$('editCancel').onclick=()=>{endEdit();status('Bearbeitung abgebrochen, nichts geändert.');};
+
+/* ---------- Offline-Betrieb + Update-Hinweis ---------- */
+const APP_VERSION=2;
 if('serviceWorker' in navigator){
-  navigator.serviceWorker.register('sw.js').then(()=>navigator.serviceWorker.ready)
-    .then(()=>{$('offline').textContent='✓ Offline bereit · Version 1';})
-    .catch(()=>{$('offline').textContent='Offline-Modus nicht aktiv';});
+  let reloading=false,waitingSW=null,updArmed=false,updRequested=false;
+  const showUpdate=w=>{waitingSW=w;$('upd').hidden=false;};
+  $('upd').onclick=()=>{if(!waitingSW)return;
+    if(photos.length&&!updArmed){updArmed=true;$('upd').textContent='Achtung: Nicht gespeicherte Fotos gehen verloren. Nochmal tippen zum Aktualisieren.';return;}
+    $('upd').textContent='Wird aktualisiert …';updRequested=true;waitingSW.postMessage('skipWaiting');
+    setTimeout(()=>{if(!reloading){reloading=true;location.reload();}},4000);};
+  navigator.serviceWorker.addEventListener('controllerchange',()=>{if(!updRequested||reloading)return;reloading=true;location.reload();});
+  navigator.serviceWorker.register('sw.js').then(reg=>{
+    if(reg.waiting&&navigator.serviceWorker.controller)showUpdate(reg.waiting);
+    reg.addEventListener('updatefound',()=>{const nw=reg.installing;if(!nw)return;
+      nw.addEventListener('statechange',()=>{if(nw.state==='installed'&&navigator.serviceWorker.controller)showUpdate(nw);});});
+    document.addEventListener('visibilitychange',()=>{if(!document.hidden)reg.update().catch(()=>{});});
+    return navigator.serviceWorker.ready;})
+  .then(()=>{$('offline').textContent='✓ Offline bereit · Version '+APP_VERSION;})
+  .catch(()=>{$('offline').textContent='Offline-Modus nicht aktiv · Version '+APP_VERSION;});
 }
 if(navigator.storage&&navigator.storage.persist)navigator.storage.persist().catch(()=>{});
 

@@ -1,10 +1,15 @@
 // Lichtbildmappe – Offline-Speicher
 // Bei einem Update die Versionsnummer erhöhen, damit das iPhone die neue Fassung lädt.
-const CACHE = 'lichtbildmappe-v1';
+const CACHE = 'lichtbildmappe-v2';
 const FILES = ['./', './index.html', './manifest.json', './icon-180.png', './icon-512.png'];
 
 self.addEventListener('install', e => {
-  e.waitUntil(caches.open(CACHE).then(c => c.addAll(FILES)).then(() => self.skipWaiting()));
+  // Neue Version wartet, bis in der App „Tippen zum Aktualisieren“ gewählt wird
+  e.waitUntil(caches.open(CACHE).then(c => c.addAll(FILES.map(f => new Request(f, { cache: 'reload' })))));
+});
+
+self.addEventListener('message', e => {
+  if (e.data === 'skipWaiting') self.skipWaiting();
 });
 
 self.addEventListener('activate', e => {
